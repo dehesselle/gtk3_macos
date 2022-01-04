@@ -1,0 +1,61 @@
+diff --git a/modulesets-stable/gtk-osx-bootstrap.modules b/modulesets-stable/gtk-osx-bootstrap.modules
+index 81b30ee..1f84cd5 100644
+--- a/gtk-osx/modulesets-stable/gtk-osx-bootstrap.modules
++++ b/gtk-osx/modulesets-stable/gtk-osx-bootstrap.modules
+@@ -9,7 +9,7 @@
+   <repository type="tarball" name="sourceforge"
+               href="http://downloads.sourceforge.net/sourceforge/"/>
+   <repository type="tarball" name="jpeg"
+-              href="http://www.ijg.org/files/"/>
++              href="https://fossies.org/"/>
+   <repository type="tarball" name="libtiff"
+ 	      href="http://download.osgeo.org/"/>
+   <repository type="tarball" name="icon-theme"
+@@ -31,7 +31,7 @@
+   </autotools>
+ 
+   <autotools id="libjpeg" autogen-sh="configure">
+-    <branch module="jpegsrc.v9d.tar.gz" version="9d"
++    <branch module="linux/misc/jpegsrc.v9d.tar.gz" version="9d"
+             repo="jpeg" checkoutdir="jpeg-9d"
+             hash="sha256:6c434a3be59f8f62425b2e3c077e785c9ce30ee5874ea1c270e843f273ba71ee">
+     </branch>
+diff --git a/modulesets-stable/gtk-osx-python.modules b/modulesets-stable/gtk-osx-python.modules
+index c795d31..8f7d89f 100644
+--- a/gtk-osx/modulesets-stable/gtk-osx-python.modules
++++ b/gtk-osx/modulesets-stable/gtk-osx-python.modules
+@@ -147,7 +147,7 @@
+     </after>
+   </autotools>
+ 
+-  <distutils id="pygments">
++  <distutils id="pygments" python3="1">
+     <branch repo="pymodules" version="2.9.0"
+             module="ba/6e/7a7c13c21d8a4a7f82ccbfe257a045890d4dbf18c023f985f565f97393e3/Pygments-2.9.0.tar.gz">
+     </branch>
+diff --git a/modulesets-stable/gtk-osx.modules b/modulesets-stable/gtk-osx.modules
+index 76c32c4..7c5ac4c 100644
+--- a/gtk-osx/modulesets-stable/gtk-osx.modules
++++ b/gtk-osx/modulesets-stable/gtk-osx.modules
+@@ -314,6 +314,21 @@
+     </after>
+   </meson>
+ 
++  <metamodule id="meta-gtk3-dependencies">
++    <dependencies>
++      <dep package="glib"/>
++      <dep package="pango"/>
++      <dep package="atk"/>
++      <dep package="gdk-pixbuf"/>
++      <dep package="gobject-introspection"/>
++      <dep package="libepoxy"/>
++      <dep package="hicolor-icon-theme"/>
++    </dependencies>
++    <after>
++      <dep package="meta-gtk-osx-bootstrap"/>
++    </after>
++  </metamodule>
++
+   <meson id="graphene" mesonargs="-Dtests=false">
+     <branch repo="github-tarball" version="1.10.4"
+             module="ebassi/graphene/releases/download/1.10.4/graphene-1.10.4.tar.xz"

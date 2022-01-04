@@ -1,0 +1,6 @@
+[submodule "gtk-osx"]
+	path = gtk-osx
+	url = https://gitlab.gnome.org/GNOME/gtk-osx.git
+[submodule "bash_d"]
+	path = bash_d
+	url = https://github.com/dehesselle/bash_d

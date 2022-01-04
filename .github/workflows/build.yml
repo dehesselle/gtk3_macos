@@ -1,0 +1,270 @@
+# SPDX-FileCopyrightText: 2021 René de Hesselle <dehesselle@web.de>
+#
+# SPDX-License-Identifier: GPL-2.0-or-later
+
+name: build
+on:
+  push:   # do not run when pushing tags
+    branches:
+      - '*'
+
+jobs:
+
+################################################################################
+
+  build_deps:
+    runs-on: macos-10.15
+    env:
+      WRK_DIR: /Users/Shared/work
+      CCACHE_DIR: /Users/Shared/work/ccache
+    steps:
+
+    #--------------------------------------------------- prepare the environemnt
+
+    - name: checkout gtk3_macos repository
+      uses: actions/checkout@v2
+      with:
+        submodules: true
+
+    - name: generate timestamp key for ccache
+      id: timestamp_key
+      uses: nanzm/get-time-action@v1.1
+      with:
+        format: "YYYY-MM-DD-HH-mm-ss"
+
+    - name: setup cache for ccache
+      id: ccache
+      uses: actions/cache@v2
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: ccache-${{ steps.timestamp_key.outputs.time }}
+        restore-keys: ccache-
+
+    - name: generate key for gtkdeps cache
+      id: gtkdeps_key
+      env:
+        SYS_IGNORE_USR_LOCAL: true
+      run: |
+        for file in \
+            $GITHUB_WORKSPACE/0??-*.sh \
+            $GITHUB_WORKSPACE/1??-*.sh \
+            $GITHUB_WORKSPACE/*.patch \
+            $GITHUB_WORKSPACE/jhbuildrc \
+            $GITHUB_WORKSPACE/packages/*.sh \
+            $GITHUB_WORKSPACE/gtk-osx/modulesets-stable/*.modules \
+            ; do
+          shasum -a 256 $file >> $GITHUB_WORKSPACE/gtkdeps_unsorted.sha256
+        done
+        cat $GITHUB_WORKSPACE/gtkdeps_unsorted.sha256 | LC_ALL=C sort > gtkdeps.sha256
+        cat gtkdeps.sha256
+        source 010-init.sh
+        echo "::set-output name=version::$VERSION"
+
+    - name: setup cache for gtkdeps
+      id: gtkdeps
+      uses: actions/cache@v2
+      with:
+        path: ${{ env.WRK_DIR }}/${{  steps.gtkdeps_key.outputs.version }}
+        key: gtkdeps-${{ hashFiles('gtkdeps.sha256') }}
+
+    # GitHub does not provide 10.11 SDK on their runners and no image older
+    # than Catalina. See here for what you can expect in their Catalina image:
+    # https://github.com/actions/virtual-environments/blob/main/images/macos/macos-10.15-Readme.md
+    #
+    # Official downloads from Apple are not accessible without a developer
+    # account and I don't trust 3rd party sources (e.g. "phracker"). So I'm
+    # using my own (non-public) source, but I'm providing the means to verify
+    # what I'm doing, see here:
+    # https://github.com/dehesselle/sdkchecksum
+    #
+    # In order to use your custom SDK_DOWNLOAD_URL, create a repository secret
+    # of said name and proivide a link to a .tar.xz file.
+    # At the moment, only 10.11.4 SDK is supported (hardcoded below).
+    - name: install macOS SDK
+      if: env.SDK_DOWNLOAD_URL != null
+      env:
+        SDK_DOWNLOAD_URL: ${{ secrets.SDK_DOWNLOAD_URL }}
+      run: |
+        mkdir -p $WRK_DIR
+        curl -L ${{ secrets.SDK_DOWNLOAD_URL }} | tar -C $WRK_DIR -xJp
+        echo "SDKROOT=$WRK_DIR/$(basename ${SDK_DOWNLOAD_URL%%.tar.xz*})" >> $GITHUB_ENV
+
+    # Checkout repository to verify SDK...
+    - name: checkout sdkchecksum repository
+      if: env.SDK_DOWNLOAD_URL != null
+      env:
+        SDK_DOWNLOAD_URL: ${{ secrets.SDK_DOWNLOAD_URL }}
+      uses: actions/checkout@v2
+      with:
+        repository: dehesselle/sdkchecksum
+        path: sdkchecksum
+        clean: false
+
+    # ...and use it to verify
+    - name: verify SDK
+      if: env.SDK_DOWNLOAD_URL != null
+      env:
+        SDK_DOWNLOAD_URL: ${{ secrets.SDK_DOWNLOAD_URL }}
+      run: |
+        shasum -a 256 sdkchecksum/MacOSX10.11.4.sdk.sha256
+        cd $WRK_DIR
+        if shasum -s -c $GITHUB_WORKSPACE/sdkchecksum/MacOSX10.11.4.sdk.sha256; then
+          echo "ok - SDK verified"
+          exit 0
+        else
+          echo "error - SDK verification failed"
+          exit 1
+        fi
+
+    # GitHub does not provide a clean macOS installation. We need to move the
+    # pre-installed components out of the way so we don't pick them up by
+    # accident.
+    - name: disable /usr/local
+      run: |
+        cd /usr/local
+        for dir in include lib share; do sudo mv $dir $dir.disabled; done
+
+    #--------------------------------------------------------------------- build
+
+    - name: prepare system
+      if: steps.gtkdeps.outputs.cache-hit != 'true'
+      run: ./110-sysprep.sh
+
+    - name: install JHBuild
+      if: steps.gtkdeps.outputs.cache-hit != 'true'
+      run: ./120-jhbuild_install.sh
+
+    - name: bootstrap JHBuild
+      if: steps.gtkdeps.outputs.cache-hit != 'true'
+      run: ./130-jhbuild_bootstrap.sh
+
+################################################################################
+
+  build_gtk:
+    runs-on: macos-10.15
+    needs: build_deps
+    env:
+      WRK_DIR: /Users/Shared/work
+      CCACHE_DIR: /Users/Shared/work/ccache
+    steps:
+
+    #--------------------------------------------------- prepare the environemnt
+
+    - name: checkout gtk3_macos repository
+      uses: actions/checkout@v2
+      with:
+        submodules: true
+
+    - name: generate timestamp key for ccache
+      id: timestamp_key
+      uses: nanzm/get-time-action@v1.1
+      with:
+        format: "YYYY-MM-DD-HH-mm-ss"
+
+    - name: setup cache for ccache
+      id: ccache
+      uses: actions/cache@v2
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: ccache-${{ steps.timestamp_key.outputs.time }}
+        restore-keys: ccache-
+
+    - name: generate key for gtkdeps cache
+      id: gtkdeps_key
+      env:
+        SYS_IGNORE_USR_LOCAL: true
+      run: |
+        for file in \
+            $GITHUB_WORKSPACE/0??-*.sh \
+            $GITHUB_WORKSPACE/1??-*.sh \
+            $GITHUB_WORKSPACE/*.patch \
+            $GITHUB_WORKSPACE/jhbuildrc \
+            $GITHUB_WORKSPACE/packages/*.sh \
+            $GITHUB_WORKSPACE/gtk-osx/modulesets-stable/*.modules \
+            ; do
+          shasum -a 256 $file >> $GITHUB_WORKSPACE/gtkdeps_unsorted.sha256
+        done
+        cat $GITHUB_WORKSPACE/gtkdeps_unsorted.sha256 | LC_ALL=C sort > gtkdeps.sha256
+        cat gtkdeps.sha256
+        source 010-init.sh
+        echo "::set-output name=version::$VERSION"
+
+    - name: setup cache for gtk
+      uses: actions/cache@v2
+      with:
+        path: ${{ env.WRK_DIR }}/${{  steps.gtkdeps_key.outputs.version }}
+        key: gtkdeps-${{ hashFiles('gtkdeps.sha256') }}
+
+    # GitHub does not provide 10.11 SDK on their runners and no image older
+    # than Catalina. See here for what you can expect in their Catalina image:
+    # https://github.com/actions/virtual-environments/blob/main/images/macos/macos-10.15-Readme.md
+    #
+    # Official downloads from Apple are not accessible without a developer
+    # account and I don't trust 3rd party sources (e.g. "phracker"). So I'm
+    # using my own (non-public) source, but I'm providing the means to verify
+    # what I'm doing, see here:
+    # https://github.com/dehesselle/sdkchecksum
+    #
+    # In order to use your custom SDK_DOWNLOAD_URL, create a repository secret
+    # of said name and proivide a link to a .tar.xz file.
+    # At the moment, only 10.11.4 SDK is supported (hardcoded below).
+    - name: install macOS SDK
+      if: env.SDK_DOWNLOAD_URL != null
+      env:
+        SDK_DOWNLOAD_URL: ${{ secrets.SDK_DOWNLOAD_URL }}
+      run: |
+        mkdir -p $WRK_DIR
+        curl -L ${{ secrets.SDK_DOWNLOAD_URL }} | tar -C $WRK_DIR -xJp
+        echo "SDKROOT=$WRK_DIR/$(basename ${SDK_DOWNLOAD_URL%%.tar.xz*})" >> $GITHUB_ENV
+
+    # Checkout repository to verify SDK...
+    - name: checkout sdkchecksum repository
+      if: env.SDK_DOWNLOAD_URL != null
+      env:
+        SDK_DOWNLOAD_URL: ${{ secrets.SDK_DOWNLOAD_URL }}
+      uses: actions/checkout@v2
+      with:
+        repository: dehesselle/sdkchecksum
+        path: sdkchecksum
+        clean: false
+
+    # ...and use it to verify
+    - name: verify SDK
+      if: env.SDK_DOWNLOAD_URL != null
+      env:
+        SDK_DOWNLOAD_URL: ${{ secrets.SDK_DOWNLOAD_URL }}
+      run: |
+        shasum -a 256 sdkchecksum/MacOSX10.11.4.sdk.sha256
+        cd $WRK_DIR
+        if shasum -s -c $GITHUB_WORKSPACE/sdkchecksum/MacOSX10.11.4.sdk.sha256; then
+          echo "ok - SDK verified"
+          exit 0
+        else
+          echo "error - SDK verification failed"
+          exit 1
+        fi
+
+    # GitHub does not provide a clean macOS installation. We need to move the
+    # pre-installed components out of the way so we don't pick them up by
+    # accident.
+    - name: disable /usr/local
+      run: |
+        cd /usr/local
+        for dir in include lib share; do sudo mv $dir $dir.disabled; done
+
+    #--------------------------------------------------------------------- build
+
+    - name: build GTK3
+      run: ./210-gtk3.sh
+
+    #---------------------------------------------------------- upload artifacts
+
+    # Restore /usr/local, GitHub actions depend on these.
+    - name: restore /usr/local
+      run: for dir in /usr/local/*.disabled; do sudo mv $dir ${dir/.disabled/}; done
+
+    - name: upload testlog
+      uses: actions/upload-artifact@v2
+      with:
+        name: testlog
+        path: ${{ env.WRK_DIR }}/gtk_build/meson-logs/testlog.txt
