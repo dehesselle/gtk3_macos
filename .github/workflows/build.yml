@@ -267,4 +267,4 @@ jobs:
       uses: actions/upload-artifact@v2
       with:
         name: testlog
-        path: ${{ env.WRK_DIR }}/gtk_build/meson-logs/testlog.txt
+        path: testlog.txt

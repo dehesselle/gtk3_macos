@@ -49,3 +49,5 @@ meson \
 cd "$VER_DIR"/gtk_build || exit 1
 meson compile
 meson test || true
+
+mv "$VER_DIR"/gtk_build/meson-logs/testlog.txt "$GITHUB_WORKSPACE"
