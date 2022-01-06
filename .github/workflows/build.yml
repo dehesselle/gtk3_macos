@@ -81,17 +81,23 @@ jobs:
     # of said name and proivide a link to a .tar.xz file.
     # At the moment, only 10.11.4 SDK is supported (hardcoded below).
     - name: install macOS SDK
-      if: env.SDK_DOWNLOAD_URL != null
+      if: |
+        env.SDK_DOWNLOAD_URL != null &&
+        steps.gtkdeps.outputs.cache-hit != 'true'
       env:
         SDK_DOWNLOAD_URL: ${{ secrets.SDK_DOWNLOAD_URL }}
+        SYS_IGNORE_USR_LOCAL: true
       run: |
-        mkdir -p $WRK_DIR
-        curl -L ${{ secrets.SDK_DOWNLOAD_URL }} | tar -C $WRK_DIR -xJp
-        echo "SDKROOT=$WRK_DIR/$(basename ${SDK_DOWNLOAD_URL%%.tar.xz*})" >> $GITHUB_ENV
+        source 010-init.sh
+        mkdir -p $VER_DIR
+        curl -L ${{ secrets.SDK_DOWNLOAD_URL }} | tar -C $VER_DIR -xJp
+        echo "SDKROOT=$VER_DIR/$(basename ${SDK_DOWNLOAD_URL%%.tar.xz*})" >> $GITHUB_ENV
 
     # Checkout repository to verify SDK...
     - name: checkout sdkchecksum repository
-      if: env.SDK_DOWNLOAD_URL != null
+      if: |
+        env.SDK_DOWNLOAD_URL != null &&
+        steps.gtkdeps.outputs.cache-hit != 'true'
       env:
         SDK_DOWNLOAD_URL: ${{ secrets.SDK_DOWNLOAD_URL }}
       uses: actions/checkout@v2
@@ -102,12 +108,16 @@ jobs:
 
     # ...and use it to verify
     - name: verify SDK
-      if: env.SDK_DOWNLOAD_URL != null
+      if: |
+        env.SDK_DOWNLOAD_URL != null &&
+        steps.gtkdeps.outputs.cache-hit != 'true'
       env:
         SDK_DOWNLOAD_URL: ${{ secrets.SDK_DOWNLOAD_URL }}
+        SYS_IGNORE_USR_LOCAL: true
       run: |
         shasum -a 256 sdkchecksum/MacOSX10.11.4.sdk.sha256
-        cd $WRK_DIR
+        source 010-init.sh
+        cd $VER_DIR
         if shasum -s -c $GITHUB_WORKSPACE/sdkchecksum/MacOSX10.11.4.sdk.sha256; then
           echo "ok - SDK verified"
           exit 0
@@ -195,55 +205,6 @@ jobs:
         path: ${{ env.WRK_DIR }}/${{  steps.gtkdeps_key.outputs.version }}
         key: gtkdeps-${{ hashFiles('gtkdeps.sha256') }}
 
-    # GitHub does not provide 10.11 SDK on their runners and no image older
-    # than Catalina. See here for what you can expect in their Catalina image:
-    # https://github.com/actions/virtual-environments/blob/main/images/macos/macos-10.15-Readme.md
-    #
-    # Official downloads from Apple are not accessible without a developer
-    # account and I don't trust 3rd party sources (e.g. "phracker"). So I'm
-    # using my own (non-public) source, but I'm providing the means to verify
-    # what I'm doing, see here:
-    # https://github.com/dehesselle/sdkchecksum
-    #
-    # In order to use your custom SDK_DOWNLOAD_URL, create a repository secret
-    # of said name and proivide a link to a .tar.xz file.
-    # At the moment, only 10.11.4 SDK is supported (hardcoded below).
-    - name: install macOS SDK
-      if: env.SDK_DOWNLOAD_URL != null
-      env:
-        SDK_DOWNLOAD_URL: ${{ secrets.SDK_DOWNLOAD_URL }}
-      run: |
-        mkdir -p $WRK_DIR
-        curl -L ${{ secrets.SDK_DOWNLOAD_URL }} | tar -C $WRK_DIR -xJp
-        echo "SDKROOT=$WRK_DIR/$(basename ${SDK_DOWNLOAD_URL%%.tar.xz*})" >> $GITHUB_ENV
-
-    # Checkout repository to verify SDK...
-    - name: checkout sdkchecksum repository
-      if: env.SDK_DOWNLOAD_URL != null
-      env:
-        SDK_DOWNLOAD_URL: ${{ secrets.SDK_DOWNLOAD_URL }}
-      uses: actions/checkout@v2
-      with:
-        repository: dehesselle/sdkchecksum
-        path: sdkchecksum
-        clean: false
-
-    # ...and use it to verify
-    - name: verify SDK
-      if: env.SDK_DOWNLOAD_URL != null
-      env:
-        SDK_DOWNLOAD_URL: ${{ secrets.SDK_DOWNLOAD_URL }}
-      run: |
-        shasum -a 256 sdkchecksum/MacOSX10.11.4.sdk.sha256
-        cd $WRK_DIR
-        if shasum -s -c $GITHUB_WORKSPACE/sdkchecksum/MacOSX10.11.4.sdk.sha256; then
-          echo "ok - SDK verified"
-          exit 0
-        else
-          echo "error - SDK verification failed"
-          exit 1
-        fi
-
     # GitHub does not provide a clean macOS installation. We need to move the
     # pre-installed components out of the way so we don't pick them up by
     # accident.
@@ -251,6 +212,13 @@ jobs:
       run: |
         cd /usr/local
         for dir in include lib share; do sudo mv $dir $dir.disabled; done
+
+    - name: setup macOS SDK
+      env:
+        SDK_DOWNLOAD_URL: ${{ secrets.SDK_DOWNLOAD_URL }}
+      run: |
+        source 010-init.sh
+        echo "SDKROOT=$VER_DIR/$(basename ${SDK_DOWNLOAD_URL%%.tar.xz*})" >> $GITHUB_ENV
 
     #--------------------------------------------------------------------- build
 
